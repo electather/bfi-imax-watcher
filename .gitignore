@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+last_status.json
+*.log
+.DS_Store
