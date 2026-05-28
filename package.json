@@ -1,0 +1,36 @@
+{
+  "name": "bfi-odyssey-ticket-checker",
+  "version": "1.0.0",
+  "description": "Dockerized TypeScript service that polls the BFI IMAX Odyssey 70mm page behind Cloudflare and sends a Telegram alert when tickets become bookable.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "check": "node dist/main.js --once",
+    "dev": "tsx src/main.ts",
+    "dev:check": "tsx src/main.ts --once",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "playwright": "1.60.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}

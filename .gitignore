@@ -1,6 +1,10 @@
 node_modules/
 dist/
+coverage/
 .env
 last_status.json
+data/
 *.log
+*.tsbuildinfo
 .DS_Store
+.claude/
