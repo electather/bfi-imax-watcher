@@ -1,0 +1,14 @@
+services:
+  bfi-checker:
+    build: .
+    image: bfi-odyssey-ticket-checker
+    container_name: bfi-odyssey-ticket-checker
+    restart: always
+    env_file: .env
+    # State persists across restarts so a known "bookable" is not re-alerted
+    # (CON-003: STATE_FILE defaults to /data/last_status.json).
+    volumes:
+      - bfi-state:/data
+
+volumes:
+  bfi-state:
