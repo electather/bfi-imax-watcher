@@ -1,8 +1,13 @@
 {
-  "name": "bfi-odyssey-ticket-checker",
+  "name": "bfi-imax-watcher",
   "version": "1.0.0",
-  "description": "Dockerized TypeScript service that polls the BFI IMAX Odyssey 70mm page behind Cloudflare and sends a Telegram alert when tickets become bookable.",
+  "description": "Dockerized TypeScript service that polls a BFI IMAX listing behind Cloudflare and sends a Telegram alert when tickets become bookable.",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/electather/bfi-imax-watcher.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
