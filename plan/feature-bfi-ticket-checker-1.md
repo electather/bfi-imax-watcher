@@ -4,7 +4,7 @@ version: 1.0
 date_created: 2026-05-27
 last_updated: 2026-05-27
 owner: omid@what3words.com
-status: 'Planned'
+status: "Planned"
 tags: [feature, infrastructure, scraping, notifier]
 ---
 
@@ -26,7 +26,7 @@ This plan implements a single long-running TypeScript service, shipped as a Dock
 - **REQ-008**: Send a Telegram error alert after `ERROR_ALERT_AFTER` consecutive cycles whose status is `unknown` (silent-breakage detection).
 - **REQ-009**: The loop must never exit on a single failed cycle.
 - **CON-001**: The site is protected by a Cloudflare managed JS challenge (`cf-mitigated: challenge`). Plain HTTP returns HTTP 403. A real JS-executing browser is required.
-- **CON-002**: Pin the Playwright npm version and the Docker base image tag to the SAME concrete version: Playwright `1.50.0`, image `mcr.microsoft.com/playwright:v1.50.0-jammy`. They must never drift. (Reviewer advisory 3.)
+- **CON-002**: Pin the Playwright npm version and the Docker base image tag to the SAME concrete version: Playwright `1.60.0`, image `mcr.microsoft.com/playwright:v1.60.0-jammy`. They must never drift. (Reviewer advisory 3.)
 - **CON-003**: The state file path is fixed at `/data/last_status.json` inside the container; `state.ts` reads `STATE_FILE` (default `/data/last_status.json`) and `docker-compose.yml` mounts a named volume at `/data`. The two must agree. (Reviewer advisory 4.)
 - **CON-004**: Runtime is Node 20+ with TypeScript. Notifier uses native global `fetch` (no HTTP dependency).
 - **GUD-001**: Each module has one responsibility and is independently testable. `detector.ts` is a pure function with no I/O.
@@ -40,57 +40,78 @@ This plan implements a single long-running TypeScript service, shipped as a Dock
 
 - GOAL-000: Prove headless Chromium passes the BFI Cloudflare challenge and renders the real article; capture the first HTML fixture. No later phase begins until GOAL-000 completes.
 
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-001 | Create a throwaway script `spike/spike.ts` that launches Playwright Chromium headless, navigates to `TARGET_URL`, waits up to 30s for `networkidle` and for the document title to NOT equal "Just a moment...", then writes `page.content()` to `tests/fixtures/coming_soon.html`. | | |
-| TASK-002 | Run the spike inside the pinned image `mcr.microsoft.com/playwright:v1.50.0-jammy`. Confirm the saved HTML contains the article body (film title text) and NOT the Cloudflare interstitial. | | |
-| TASK-003 | If headless is blocked: add `playwright-extra` + `puppeteer-extra-plugin-stealth`, retry TASK-002. If still blocked: stop and escalate to the hybrid `cf_clearance` fallback (documented in spec Alternatives). Record the working method in `plan/feature-bfi-ticket-checker-1.md` notes. | | |
-| TASK-004 | Delete `spike/` once the working approach and fixture are captured. The proven launch method becomes the basis for `fetcher.ts`. | | |
+| Task     | Description                                                                                                                                                                                                                                                                                | Completed | Date       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | ---------- |
+| TASK-001 | Create a throwaway script `spike/spike.ts` that launches Playwright Chromium headless, navigates to `TARGET_URL`, waits up to 30s for `networkidle` and for the document title to NOT equal "Just a moment...", then writes `page.content()` to `tests/fixtures/coming_soon.html`.         |           |            |
+| TASK-002 | Run the spike inside the pinned image `mcr.microsoft.com/playwright:v1.60.0-jammy`. Confirm the saved HTML contains the article body (film title text) and NOT the Cloudflare interstitial.                                                                                                |           |            |
+| TASK-003 | If headless is blocked: add `playwright-extra` + `puppeteer-extra-plugin-stealth`, retry TASK-002. If still blocked: stop and escalate to the hybrid `cf_clearance` fallback (documented in spec Alternatives). Record the working method in `plan/feature-bfi-ticket-checker-1.md` notes. |           |            |
+| TASK-004 | Delete `spike/` once the working approach and fixture are captured. The proven launch method becomes the basis for `fetcher.ts`.                                                                                                                                                           | ✅        | 2026-05-27 |
+
+#### Phase 0 notes (TASK-003 record)
+
+- **Build environment finding (2026-05-27):** The implementation environment is an agent
+  sandbox in which the **Playwright-spawned Chromium subprocess has no network egress**
+  (every request, including `https://example.com`, returns `net::ERR_ABORTED`), while the
+  host's `curl` and Node's global `fetch` reach the network normally (BFI returns the
+  expected `HTTP 403` + `cf-mitigated: challenge`; Telegram returns `200`). The live
+  Cloudflare bypass therefore **cannot be validated from this environment** — this is an
+  environment limitation, not a Cloudflare block or a code defect.
+- **Consequence:** GOAL-000's live verification is deferred to the user's real machine /
+  Docker host, where Chromium has normal egress. A one-shot verification mode
+  (`npm run check`, i.e. `main.ts --once`) replaces the throwaway spike so the user runs
+  the real gate themselves. `spike/` is deleted per TASK-004.
+- **Fixtures:** `coming_soon.html` could not be captured live (the article is behind the
+  challenge), so both fixtures are realistic-synthetic representations of the BFI/Tessitura
+  `Online/default.asp` markup. Detector keywords are configurable (REQ-002 / RISK-002) so
+  they can be tuned against the real captured HTML after the first successful live run.
+- **Stealth posture:** rather than waiting to be blocked, `fetcher.ts` ships with a
+  realistic desktop user agent, locale, viewport, and `navigator.webdriver` masking baked
+  in to maximize the chance headless Chromium clears the managed challenge on first run.
 
 ### Implementation Phase 1 — Project scaffold
 
 - GOAL-001: Initialize the TypeScript project, tooling, and pinned dependencies.
 
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-005 | Create `package.json` (type module, Node 20 engines). Scripts: `build` (`tsc`), `start` (`node dist/main.js`), `dev` (`tsx src/main.ts`), `test` (`vitest run`), `lint` (`eslint .`), `format` (`prettier --write .`). | | |
-| TASK-006 | Add exact-pinned deps: `playwright@1.50.0` (and stealth packages only if Phase 0 required them). Dev deps: `typescript@5.x`, `tsx`, `vitest`, `eslint`, `@typescript-eslint/*`, `prettier`. | | |
-| TASK-007 | Create `tsconfig.json` (target ES2022, module NodeNext, `outDir dist`, `rootDir src`, strict true). | | |
-| TASK-008 | Create `.eslintrc.cjs` and `.prettierrc`. Confirm `.gitignore` already excludes `node_modules/`, `dist/`, `.env`, `last_status.json`, `*.log` (it does). | | |
+| Task     | Description                                                                                                                                                                                                            | Completed | Date |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- |
+| TASK-005 | Create `package.json` (type module, Node 20 engines). Scripts: `build` (`tsc`), `start` (`node dist/main.js`), `dev` (`tsx src/main.ts`), `test` (`vitest run`), `lint` (`eslint .`), `format` (`prettier --write .`). |           |      |
+| TASK-006 | Add exact-pinned deps: `playwright@1.60.0` (and stealth packages only if Phase 0 required them). Dev deps: `typescript@5.x`, `tsx`, `vitest`, `eslint`, `@typescript-eslint/*`, `prettier`.                            |           |      |
+| TASK-007 | Create `tsconfig.json` (target ES2022, module NodeNext, `outDir dist`, `rootDir src`, strict true).                                                                                                                    |           |      |
+| TASK-008 | Create `.eslintrc.cjs` and `.prettierrc`. Confirm `.gitignore` already excludes `node_modules/`, `dist/`, `.env`, `last_status.json`, `*.log` (it does).                                                               |           |      |
 
 ### Implementation Phase 2 — Core modules
 
 - GOAL-002: Implement config, detector, state, notifier, fetcher as isolated modules with unit tests.
 
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-009 | `src/config.ts`: load + validate env into a typed `Config`. Required: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Defaults: `TARGET_URL` (Odyssey page), `CHECK_INTERVAL=900`, `HEADLESS=true`, `ERROR_ALERT_AFTER=5`, `STATE_FILE=/data/last_status.json`. Throw on missing required vars. | | |
-| TASK-010 | `src/detector.ts`: pure `detect(html, config): Status`. Rules per spec — `bookable` if a Book/Buy-tickets link, showtime/date, or `mapSelect.asp` link present and/or coming-soon text absent; `coming_soon` if coming-soon text present and no booking affordance; else `unknown`. Keywords configurable via `DetectorConfig`. No I/O. | | |
-| TASK-011 | `src/state.ts`: `readStatus(file): Status \| null` and `writeStatus(file, status): void`. JSON at `STATE_FILE`. Create parent dir if missing. Treat unreadable/missing file as `null`. | | |
-| TASK-012 | `src/notifier.ts`: `sendAlert(config, text): Promise<void>` and `sendError(config, text): Promise<void>` via `fetch` POST to `https://api.telegram.org/bot<token>/sendMessage`. Throw on non-2xx so the loop can count failures. | | |
-| TASK-013 | `src/fetcher.ts`: `fetchHtml(config): Promise<string>` using the Phase 0 proven launch method. Wait for challenge clearance; throw on timeout/interstitial so caller maps to `unknown`. Owns browser launch/close per call. | | |
+| Task     | Description                                                                                                                                                                                                                                                                                                                             | Completed | Date |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- |
+| TASK-009 | `src/config.ts`: load + validate env into a typed `Config`. Required: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Defaults: `TARGET_URL` (Odyssey page), `CHECK_INTERVAL=900`, `HEADLESS=true`, `ERROR_ALERT_AFTER=5`, `STATE_FILE=/data/last_status.json`. Throw on missing required vars.                                               |           |      |
+| TASK-010 | `src/detector.ts`: pure `detect(html, config): Status`. Rules per spec — `bookable` if a Book/Buy-tickets link, showtime/date, or `mapSelect.asp` link present and/or coming-soon text absent; `coming_soon` if coming-soon text present and no booking affordance; else `unknown`. Keywords configurable via `DetectorConfig`. No I/O. |           |      |
+| TASK-011 | `src/state.ts`: `readStatus(file): Status \| null` and `writeStatus(file, status): void`. JSON at `STATE_FILE`. Create parent dir if missing. Treat unreadable/missing file as `null`.                                                                                                                                                  |           |      |
+| TASK-012 | `src/notifier.ts`: `sendAlert(config, text): Promise<void>` and `sendError(config, text): Promise<void>` via `fetch` POST to `https://api.telegram.org/bot<token>/sendMessage`. Throw on non-2xx so the loop can count failures.                                                                                                        |           |      |
+| TASK-013 | `src/fetcher.ts`: `fetchHtml(config): Promise<string>` using the Phase 0 proven launch method. Wait for challenge clearance; throw on timeout/interstitial so caller maps to `unknown`. Owns browser launch/close per call.                                                                                                             |           |      |
 
 ### Implementation Phase 3 — Orchestration
 
 - GOAL-003: Wire the loop with dedup, error counting, retries, and logging.
 
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-014 | `src/main.ts`: one cycle = fetch (retry 3x exponential backoff) -> detect -> compare to stored status -> act. On fetch failure after retries, status = `unknown`. | | |
-| TASK-015 | Dedup logic: alert + persist only on `previous != bookable && current == bookable`. Persist current status every cycle. On `current == coming_soon` after `bookable`, persist (re-arm). `unknown` is logged, persisted as `unknown` only for error-counting, and never triggers an alert (REQ-006). | | |
-| TASK-016 | Error counting: maintain in-memory consecutive-`unknown` counter; when it reaches `ERROR_ALERT_AFTER`, call `notifier.sendError` once, then reset counter. Reset on any non-`unknown` cycle. | | |
-| TASK-017 | Loop: wrap each cycle in try/catch so no single cycle exits the process; `sleep(CHECK_INTERVAL)` between cycles; log a heartbeat line per cycle (ISO timestamp, status, action). Handle SIGTERM/SIGINT for clean browser shutdown. | | |
+| Task     | Description                                                                                                                                                                                                                                                                                         | Completed | Date |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- |
+| TASK-014 | `src/main.ts`: one cycle = fetch (retry 3x exponential backoff) -> detect -> compare to stored status -> act. On fetch failure after retries, status = `unknown`.                                                                                                                                   |           |      |
+| TASK-015 | Dedup logic: alert + persist only on `previous != bookable && current == bookable`. Persist current status every cycle. On `current == coming_soon` after `bookable`, persist (re-arm). `unknown` is logged, persisted as `unknown` only for error-counting, and never triggers an alert (REQ-006). |           |      |
+| TASK-016 | Error counting: maintain in-memory consecutive-`unknown` counter; when it reaches `ERROR_ALERT_AFTER`, call `notifier.sendError` once, then reset counter. Reset on any non-`unknown` cycle.                                                                                                        |           |      |
+| TASK-017 | Loop: wrap each cycle in try/catch so no single cycle exits the process; `sleep(CHECK_INTERVAL)` between cycles; log a heartbeat line per cycle (ISO timestamp, status, action). Handle SIGTERM/SIGINT for clean browser shutdown.                                                                  |           |      |
 
 ### Implementation Phase 4 — Containerization & docs
 
 - GOAL-004: Package as a container and document setup.
 
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-018 | `Dockerfile`: FROM `mcr.microsoft.com/playwright:v1.50.0-jammy`; install deps, `npm run build`, CMD `node dist/main.js`. | | |
-| TASK-019 | `docker-compose.yml`: service with `restart: always`, `env_file: .env`, named volume mounted at `/data` (matches `STATE_FILE`, CON-003). | | |
-| TASK-020 | `.env.example`: all env vars from TASK-009 with placeholder values and comments. | | |
-| TASK-021 | `README.md`: how to create a Telegram bot + get chat id, configure `.env`, `docker compose up -d`, view logs, change interval. | | |
+| Task     | Description                                                                                                                              | Completed | Date |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- |
+| TASK-018 | `Dockerfile`: FROM `mcr.microsoft.com/playwright:v1.60.0-jammy`; install deps, `npm run build`, CMD `node dist/main.js`.                 |           |      |
+| TASK-019 | `docker-compose.yml`: service with `restart: always`, `env_file: .env`, named volume mounted at `/data` (matches `STATE_FILE`, CON-003). |           |      |
+| TASK-020 | `.env.example`: all env vars from TASK-009 with placeholder values and comments.                                                         |           |      |
+| TASK-021 | `README.md`: how to create a Telegram bot + get chat id, configure `.env`, `docker compose up -d`, view logs, change interval.           |           |      |
 
 ## 3. Alternatives
 
@@ -101,8 +122,8 @@ This plan implements a single long-running TypeScript service, shipped as a Dock
 
 ## 4. Dependencies
 
-- **DEP-001**: `playwright@1.50.0` (Chromium driver).
-- **DEP-002**: Docker base image `mcr.microsoft.com/playwright:v1.50.0-jammy` (Node + Chromium preinstalled), version-locked to DEP-001 (CON-002).
+- **DEP-001**: `playwright@1.60.0` (Chromium driver).
+- **DEP-002**: Docker base image `mcr.microsoft.com/playwright:v1.60.0-jammy` (Node + Chromium preinstalled), version-locked to DEP-001 (CON-002).
 - **DEP-003**: `typescript`, `tsx`, `vitest`, `eslint`, `@typescript-eslint/*`, `prettier` (dev).
 - **DEP-004**: A Telegram bot token + chat id (user-provisioned, runtime).
 - **DEP-005** (conditional): `playwright-extra` + `puppeteer-extra-plugin-stealth`, only if Phase 0 TASK-003 requires them.
@@ -141,7 +162,7 @@ This plan implements a single long-running TypeScript service, shipped as a Dock
 - **RISK-004**: Telegram API/network outage. Mitigation: errors thrown and logged; loop continues; `ERROR_ALERT_AFTER` surfaces persistent failure (though if Telegram itself is down the alert cannot send — logged regardless).
 - **ASSUMPTION-001**: Host runs Docker and stays always-on (NAS/VPS/Mac mini).
 - **ASSUMPTION-002**: 15-minute polling is frequent enough to catch the drop in time; user can lower `CHECK_INTERVAL`.
-- **ASSUMPTION-003**: Playwright `1.50.0` is available and compatible; if a newer pinned version is preferred, update DEP-001 and CON-002/DEP-002 together.
+- **ASSUMPTION-003**: Playwright `1.60.0` is available and compatible; if a newer pinned version is preferred, update DEP-001 and CON-002/DEP-002 together.
 
 ## 8. Related Specifications / Further Reading
 

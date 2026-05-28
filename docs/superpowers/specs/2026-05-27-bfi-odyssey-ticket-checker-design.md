@@ -5,7 +5,7 @@
 
 ## Problem
 
-The BFI IMAX page for *Odyssey — The Film (IMAX 70mm, 2026)* is currently "coming
+The BFI IMAX page for _Odyssey — The Film (IMAX 70mm, 2026)_ is currently "coming
 soon" with no tickets on sale. We want an automatic alert the moment tickets
 become bookable, so we can buy before the screening sells out.
 
@@ -17,7 +17,7 @@ Target URL:
 - **No existing local project** — the `bfiMovieCheck/` directory is empty.
 - **Prior art exists but none is drop-in:**
   - [jamesgawn/bfi-imax-new-film-notifier](https://github.com/jamesgawn/bfi-imax-new-film-notifier)
-    — BFI-specific, serverless TypeScript, *tweets* when any new film opens. Watches
+    — BFI-specific, serverless TypeScript, _tweets_ when any new film opens. Watches
     all films, not one; notifies publicly via Twitter, not personally.
   - [rach gist](https://gist.github.com/rach/2439291) — Python + BeautifulSoup +
     email, 12h polling. Old; uses a now-dead URL (`bfi.org.uk/whatson/...`).
@@ -69,14 +69,14 @@ Single long-running TypeScript service in Docker. Internal loop:
 
 ### Modules (each one job, independently testable)
 
-| Module        | Responsibility                                                                 | Depends on            |
-|---------------|--------------------------------------------------------------------------------|-----------------------|
-| `config.ts`   | Load + validate env vars; expose typed config object.                          | env                   |
-| `fetcher.ts`  | Launch headless Chromium, load `TARGET_URL`, wait for Cloudflare to clear, return rendered HTML. Adds `playwright-extra` stealth if headless is detected. | playwright            |
-| `detector.ts` | **Pure function** `html -> Status`. No I/O. Easy to unit-test with fixtures.   | none                  |
-| `notifier.ts` | Send a Telegram message via Bot API using native `fetch`.                      | config                |
-| `state.ts`    | Read/write last known status to a JSON file on a mounted volume.               | filesystem            |
-| `main.ts`     | Wire the loop, logging, error handling, dedup decision.                        | all of the above      |
+| Module        | Responsibility                                                                                                                                            | Depends on       |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `config.ts`   | Load + validate env vars; expose typed config object.                                                                                                     | env              |
+| `fetcher.ts`  | Launch headless Chromium, load `TARGET_URL`, wait for Cloudflare to clear, return rendered HTML. Adds `playwright-extra` stealth if headless is detected. | playwright       |
+| `detector.ts` | **Pure function** `html -> Status`. No I/O. Easy to unit-test with fixtures.                                                                              | none             |
+| `notifier.ts` | Send a Telegram message via Bot API using native `fetch`.                                                                                                 | config           |
+| `state.ts`    | Read/write last known status to a JSON file on a mounted volume.                                                                                          | filesystem       |
+| `main.ts`     | Wire the loop, logging, error handling, dedup decision.                                                                                                   | all of the above |
 
 ## Detection logic
 
@@ -107,18 +107,18 @@ the coming-soon and (synthetic/known) bookable states.
 
 ## Configuration (env)
 
-| Var                  | Default                  | Purpose                                  |
-|----------------------|--------------------------|------------------------------------------|
-| `TELEGRAM_BOT_TOKEN` | (required)               | Telegram bot token.                      |
-| `TELEGRAM_CHAT_ID`   | (required)               | Chat to notify.                          |
-| `TARGET_URL`         | Odyssey 70mm page        | Page to watch.                           |
-| `CHECK_INTERVAL`     | `900` (15 min)           | Seconds between checks.                   |
-| `HEADLESS`           | `true`                   | Run Chromium headless.                    |
-| `ERROR_ALERT_AFTER`  | `5`                      | Consecutive errors before an error alert. |
+| Var                  | Default           | Purpose                                   |
+| -------------------- | ----------------- | ----------------------------------------- |
+| `TELEGRAM_BOT_TOKEN` | (required)        | Telegram bot token.                       |
+| `TELEGRAM_CHAT_ID`   | (required)        | Chat to notify.                           |
+| `TARGET_URL`         | Odyssey 70mm page | Page to watch.                            |
+| `CHECK_INTERVAL`     | `900` (15 min)    | Seconds between checks.                   |
+| `HEADLESS`           | `true`            | Run Chromium headless.                    |
+| `ERROR_ALERT_AFTER`  | `5`               | Consecutive errors before an error alert. |
 
 ## Deployment
 
-- Base image: `mcr.microsoft.com/playwright:vX-jammy` (Node + Chromium preinstalled).
+- Base image: `mcr.microsoft.com/playwright:v1.60.0-jammy` (Node + Chromium preinstalled).
 - Build: `tsc` → `dist/`, run `node dist/main.js`. `tsx` for local dev.
 - Ships: `Dockerfile`, `docker-compose.yml`, `.env.example`, `README.md`.
 - Run on an always-on host (NAS / VPS / Mac mini). Volume mounts the state file.
