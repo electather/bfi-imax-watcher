@@ -7,14 +7,18 @@ import type { Decision, Status } from "./types.js";
  * - "alert": entering bookable from any non-bookable state (including null/first
  *   run and "unknown"; the rare bookable -> unknown -> bookable duplicate is
  *   accepted per REQ-007).
- * - "rearm": leaving bookable back to coming_soon, re-arming the alert.
+ * - "rearm": leaving bookable back to coming_soon or sold_out, re-arming the
+ *   alert for the next time tickets open up.
  * - "noop": everything else, including any transition into "unknown" (REQ-006).
  */
 export function decideAction(prev: Status | null, current: Status): Decision {
   if (current === "bookable") {
     return prev === "bookable" ? "noop" : "alert";
   }
-  if (current === "coming_soon" && prev === "bookable") {
+  if (
+    (current === "coming_soon" || current === "sold_out") &&
+    prev === "bookable"
+  ) {
     return "rearm";
   }
   return "noop";

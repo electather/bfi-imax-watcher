@@ -1,14 +1,19 @@
 import type { DetectorConfig, Status } from "./types.js";
 
-/** Default detector keywords/patterns; overridable via env (see config.ts). */
+// Defaults match BFI's AudienceView markup. Per-showtime rows render
+// `<div class="item-link ... last-column <availability>">`, where the trailing
+// class is one of `excellent|good|limited` (Buy button rendered) or `soldout`
+// (an `<span class="unavailable-message">Sold out!</span>` is rendered
+// instead). The Buy button itself carries `aria-label="Buy, ..."`. We key off
+// those structural markers because the page leaves stale prose in place across
+// state transitions.
 export const DEFAULT_DETECTOR_CONFIG: DetectorConfig = {
   bookableKeywords: [
+    'aria-label="buy,',
     "buy tickets",
     "book tickets",
     "select your seats",
     "add to basket",
-    "on sale now",
-    "tickets available",
   ],
   comingSoonKeywords: [
     "coming soon",
@@ -18,11 +23,14 @@ export const DEFAULT_DETECTOR_CONFIG: DetectorConfig = {
     "sale date to be confirmed",
     "go on sale",
   ],
+  soldOutKeywords: [
+    'class="unavailable-message">sold out',
+    "last-column soldout",
+  ],
   bookingLinkPatterns: [
+    "last-column\\s+(?:excellent|good|limited)\\b",
     "mapselect\\.asp",
     "addtocart",
-    "::performance",
-    "selectseats",
   ],
 };
 
@@ -36,13 +44,16 @@ const CHALLENGE_MARKERS = [
 ];
 
 /**
- * Classify rendered page HTML as bookable, coming_soon, or unknown.
+ * Classify rendered page HTML as bookable, sold_out, coming_soon, or unknown.
  *
- * Pure function: no I/O, no side effects. A real booking affordance (a booking
- * link pattern or a bookable keyword) wins over coming-soon text, because once
- * tickets open the site may leave stale "coming soon" copy in place. If neither
- * signal is present — including the Cloudflare interstitial or garbage — the
- * status is "unknown" and is never treated as alert-worthy by the caller.
+ * Pure function: no I/O, no side effects. Precedence is intentional: a real
+ * booking affordance wins over everything else, because once any showtime
+ * opens up the page may still carry stale "sold out" or "coming soon" copy
+ * elsewhere. Sold-out detection runs before coming-soon so a film that is on
+ * sale but currently has every listed date sold reports `sold_out` rather
+ * than getting confused with a not-yet-on-sale page. If none of the markers
+ * match — including the Cloudflare interstitial or garbage — the status is
+ * "unknown" and is never treated as alert-worthy by the caller.
  */
 export function detect(html: string, config: DetectorConfig): Status {
   const lower = html.toLowerCase();
@@ -60,6 +71,13 @@ export function detect(html: string, config: DetectorConfig): Status {
     );
   if (hasBooking) {
     return "bookable";
+  }
+
+  const hasSoldOut = config.soldOutKeywords.some((keyword) =>
+    lower.includes(keyword.toLowerCase()),
+  );
+  if (hasSoldOut) {
+    return "sold_out";
   }
 
   const hasComingSoon = config.comingSoonKeywords.some((keyword) =>

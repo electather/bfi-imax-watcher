@@ -20,6 +20,23 @@ describe("detect", () => {
     );
   });
 
+  it("classifies the sold_out fixture as sold_out", () => {
+    expect(detect(fixture("sold_out.html"), DEFAULT_DETECTOR_CONFIG)).toBe(
+      "sold_out",
+    );
+  });
+
+  it("treats a mixed page (one available, others sold out) as bookable", () => {
+    const html =
+      '<div class="result-box-item">' +
+      '<div class="item-link last-column good">' +
+      '<a aria-label="Buy, Foo, Mon">Buy</a></div></div>' +
+      '<div class="result-box-item">' +
+      '<div class="item-link last-column soldout">' +
+      '<span class="unavailable-message">Sold out!</span></div></div>';
+    expect(detect(html, DEFAULT_DETECTOR_CONFIG)).toBe("bookable");
+  });
+
   it("treats garbage HTML as unknown (TEST-003)", () => {
     expect(
       detect("<html><body>hello</body></html>", DEFAULT_DETECTOR_CONFIG),

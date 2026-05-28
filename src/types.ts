@@ -1,5 +1,5 @@
 /** Detection result for a single fetched page. */
-export type Status = "bookable" | "coming_soon" | "unknown";
+export type Status = "bookable" | "sold_out" | "coming_soon" | "unknown";
 
 /** Decision about what the loop should do given a status transition. */
 export type Decision = "alert" | "rearm" | "noop";
@@ -14,6 +14,8 @@ export interface DetectorConfig {
   readonly bookableKeywords: readonly string[];
   /** Substrings (case-insensitive) that indicate the film is not yet on sale. */
   readonly comingSoonKeywords: readonly string[];
+  /** Substrings (case-insensitive) that indicate every listed showtime is sold out. */
+  readonly soldOutKeywords: readonly string[];
   /** Regex source strings (case-insensitive) matching booking links/affordances. */
   readonly bookingLinkPatterns: readonly string[];
 }

@@ -5,6 +5,10 @@ services:
     container_name: bfi-odyssey-ticket-checker
     restart: always
     env_file: .env
+    # Override STATE_FILE so it lands on the mounted volume (the .env in this
+    # repo uses a relative path that would resolve inside the image instead).
+    environment:
+      STATE_FILE: /data/last_status.json
     # State persists across restarts so a known "bookable" is not re-alerted
     # (CON-003: STATE_FILE defaults to /data/last_status.json).
     volumes:

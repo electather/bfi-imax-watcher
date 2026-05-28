@@ -9,6 +9,7 @@ interface StoredState {
 
 const VALID_STATUSES: readonly Status[] = [
   "bookable",
+  "sold_out",
   "coming_soon",
   "unknown",
 ];

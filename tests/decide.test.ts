@@ -14,6 +14,18 @@ describe("decideAction (TEST-006)", () => {
     expect(decideAction("bookable", "coming_soon")).toBe("rearm");
   });
 
+  it("re-arms on bookable -> sold_out", () => {
+    expect(decideAction("bookable", "sold_out")).toBe("rearm");
+  });
+
+  it("alerts on sold_out -> bookable", () => {
+    expect(decideAction("sold_out", "bookable")).toBe("alert");
+  });
+
+  it("does not alert on first-ever sold_out (null prev)", () => {
+    expect(decideAction(null, "sold_out")).toBe("noop");
+  });
+
   it("does not alert on bookable -> unknown", () => {
     expect(decideAction("bookable", "unknown")).toBe("noop");
   });

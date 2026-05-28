@@ -80,6 +80,11 @@ function loadDetectorConfig(env: Env): DetectorConfig {
       "COMING_SOON_KEYWORDS",
       DEFAULT_DETECTOR_CONFIG.comingSoonKeywords,
     ),
+    soldOutKeywords: keywordList(
+      env,
+      "SOLD_OUT_KEYWORDS",
+      DEFAULT_DETECTOR_CONFIG.soldOutKeywords,
+    ),
     bookingLinkPatterns: keywordList(
       env,
       "BOOKING_LINK_PATTERNS",
