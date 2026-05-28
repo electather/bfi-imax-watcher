@@ -74,6 +74,59 @@ not re-alerted after a restart or host reboot.
 `docker compose up -d` again. Lower it (e.g. `120`) as the expected on-sale date
 approaches.
 
+### Pull the pre-built image from GHCR
+
+Every push to `main` and every `v*.*.*` tag publishes a multi-arch
+(`linux/amd64` + `linux/arm64`) image to the GitHub Container Registry at
+[`ghcr.io/electather/bfi-imax-watcher`](https://github.com/electather/bfi-imax-watcher/pkgs/container/bfi-imax-watcher).
+The package is public — no `docker login` is required to pull.
+
+Available tags:
+
+| Tag                     | What it tracks                                |
+| ----------------------- | --------------------------------------------- |
+| `latest`                | Latest commit on `main`.                      |
+| `main`                  | Same as `latest`.                             |
+| `v1.2.3` / `1.2` / `1`  | A specific release tag (semver fan-out).      |
+| `sha-<short>`           | A specific commit (e.g. `sha-0310a6b`).       |
+
+**One-liner:**
+
+```bash
+docker run -d \
+  --name bfi-imax-watcher \
+  --restart always \
+  --env-file .env \
+  -e STATE_FILE=/data/last_status.json \
+  -v bfi-state:/data \
+  ghcr.io/electather/bfi-imax-watcher:latest
+```
+
+**With `docker compose`:** edit `docker-compose.yml`, remove the `build: .` line
+and set `image:` to the published tag:
+
+```yaml
+services:
+  bfi-checker:
+    image: ghcr.io/electather/bfi-imax-watcher:latest
+    # ... rest unchanged
+```
+
+Then:
+
+```bash
+docker compose pull            # fetch newest image
+docker compose up -d           # (re)start with it
+```
+
+**Private fork?** If you fork this repo and keep the package private, log in
+first with a [classic PAT](https://github.com/settings/tokens) that has
+`read:packages`:
+
+```bash
+echo "$GHCR_PAT" | docker login ghcr.io -u <your-github-user> --password-stdin
+```
+
 ### 4. Verify the Cloudflare bypass (one-shot check)
 
 Before trusting the service, confirm headless Chromium can actually clear the
