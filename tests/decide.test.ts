@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { decideAction, evaluateErrorCounter } from "../src/decide.js";
+import {
+  decideAction,
+  decideShowtimeAlerts,
+  evaluateErrorCounter,
+} from "../src/decide.js";
+import type { Showtime } from "../src/types.js";
+
+function showtime(key: string): Showtime {
+  const [isoDate, time] = key.split("T");
+  const [hour, minute] = time.split(":").map(Number);
+  return {
+    raw: key,
+    key,
+    isoDate,
+    weekday: 0,
+    minutes: hour * 60 + minute,
+    time,
+    availability: "bookable",
+    bookingUrl: `https://example.test/${key}`,
+  };
+}
 
 describe("decideAction (TEST-006)", () => {
   it("alerts on coming_soon -> bookable", () => {
@@ -40,6 +60,52 @@ describe("decideAction (TEST-006)", () => {
 
   it("does nothing on first-ever coming_soon (null prev)", () => {
     expect(decideAction(null, "coming_soon")).toBe("noop");
+  });
+});
+
+describe("decideShowtimeAlerts", () => {
+  it("alerts every newly bookable showtime on first sight", () => {
+    const { toAlert, nextAlerted } = decideShowtimeAlerts(new Set(), [
+      showtime("2026-07-17T11:30"),
+      showtime("2026-07-17T20:15"),
+    ]);
+    expect(toAlert.map((s) => s.key)).toEqual([
+      "2026-07-17T11:30",
+      "2026-07-17T20:15",
+    ]);
+    expect(nextAlerted).toEqual(
+      new Set(["2026-07-17T11:30", "2026-07-17T20:15"]),
+    );
+  });
+
+  it("does not re-alert a showtime already alerted", () => {
+    const prev = new Set(["2026-07-17T11:30"]);
+    const { toAlert } = decideShowtimeAlerts(prev, [
+      showtime("2026-07-17T11:30"),
+      showtime("2026-07-17T20:15"),
+    ]);
+    expect(toAlert.map((s) => s.key)).toEqual(["2026-07-17T20:15"]);
+  });
+
+  it("re-arms a showtime that dropped out and came back", () => {
+    const prev = new Set(["2026-07-17T11:30"]);
+    // Showtime sells out: no longer in the bookable set, so it is dropped.
+    const dropped = decideShowtimeAlerts(prev, []);
+    expect(dropped.nextAlerted).toEqual(new Set());
+    // It reopens later: alerts again because it is no longer tracked.
+    const reopened = decideShowtimeAlerts(dropped.nextAlerted, [
+      showtime("2026-07-17T11:30"),
+    ]);
+    expect(reopened.toAlert.map((s) => s.key)).toEqual(["2026-07-17T11:30"]);
+  });
+
+  it("emits nothing when there are no bookable matches", () => {
+    const { toAlert, nextAlerted } = decideShowtimeAlerts(
+      new Set(["2026-07-17T11:30"]),
+      [],
+    );
+    expect(toAlert).toEqual([]);
+    expect(nextAlerted).toEqual(new Set());
   });
 });
 

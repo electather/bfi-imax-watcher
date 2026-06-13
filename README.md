@@ -9,33 +9,76 @@ sends a **Telegram** alert the moment tickets become bookable. Shipped pre-tuned
 for **_Odyssey — The Film (IMAX 70mm, 2026)_**, but the target URL and detection
 keywords are configurable so it works for any BFI IMAX listing.
 
+Instead of treating the whole page as one status, it parses **each individual
+showtime** (date, time, availability, booking link) and can be told to watch
+**only the showtimes you care about** — by time of day, day of week, and/or date
+range. It then alerts **once per distinct matching showtime** that becomes
+bookable, including a direct booking link, and re-arms a showtime if it sells
+out and later reopens.
+
 The BFI page sits behind a Cloudflare managed JS challenge, so the service
 renders it with headless **Playwright + Chromium** rather than a plain HTTP
-request. It checks every 15 minutes (configurable), alerts **exactly once** per
-transition into `bookable`, and persists state so it does not re-alert after a
-restart.
+request. It checks every 15 minutes (configurable) and persists state so it does
+not re-alert after a restart.
 
 ## How it works
 
 ```
-loop: fetch (headless Chromium, clears Cloudflare) -> detect status -> compare
-      to last status -> alert on (coming_soon|sold_out|unknown) -> bookable
-      -> sleep -> repeat
+loop: fetch (headless Chromium, clears Cloudflare) -> parse showtimes
+      -> keep the ones matching your filter -> alert each newly-bookable one
+      (with booking link) -> persist tracked set -> sleep -> repeat
 ```
 
-| Module        | Responsibility                                                          |
-| ------------- | ----------------------------------------------------------------------- |
-| `config.ts`   | Load + validate environment variables into a typed config.              |
-| `fetcher.ts`  | Launch headless Chromium, clear Cloudflare, return the HTML.            |
-| `detector.ts` | Pure function: HTML -> `bookable \| coming_soon \| sold_out \| unknown`. |
-| `state.ts`    | Read/write the last known status as JSON on a volume.                   |
-| `notifier.ts` | Send Telegram messages via the Bot API (native `fetch`).                |
-| `decide.ts`   | Pure dedup + error-counting decisions.                                  |
-| `main.ts`     | Wire the loop, retries, logging, and signal handling.                   |
+| Module         | Responsibility                                                              |
+| -------------- | --------------------------------------------------------------------------- |
+| `config.ts`    | Load + validate environment variables (incl. watch filter) into config.     |
+| `fetcher.ts`   | Launch headless Chromium, clear Cloudflare, return the HTML.                |
+| `detector.ts`  | Pure function: page-level `bookable \| coming_soon \| sold_out \| unknown`. |
+| `showtimes.ts` | Pure: HTML -> per-showtime list; filter by time/day/date.                   |
+| `state.ts`     | Read/write the set of already-alerted showtime keys as JSON on a volume.    |
+| `notifier.ts`  | Send Telegram messages via the Bot API (native `fetch`).                    |
+| `decide.ts`    | Pure per-showtime alert + error-counting decisions.                         |
+| `main.ts`      | Wire the loop, retries, logging, and signal handling.                       |
 
-Status is `unknown` when a page cannot be read or classified. `unknown` never
-triggers a "bookable" alert; instead, after `ERROR_ALERT_AFTER` consecutive
+The page-level status is still computed for logging and the error counter. It is
+`unknown` when a page cannot be read or classified; an `unknown` read never
+touches the tracked showtime set, and after `ERROR_ALERT_AFTER` consecutive
 `unknown` checks the service sends one error alert so silent breakage is noticed.
+
+## Watching only the showtimes you want
+
+**Defaults are baked in** for Odyssey — weekends at prime times **or** any weekday
+evening after 6pm, across the run window (17 Jul – 13 Aug 2026). The app works
+with no watch config at all; the variables below only **override** the defaults.
+Setting any of `WATCH_RULES` / `WATCH_TIMES` / `WATCH_DAYS` replaces the default
+rules entirely; each date bound is overridden independently.
+
+| Variable          | Meaning                                                                 | Example                                               |
+| ----------------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| `WATCH_RULES`     | One or more `DAYS@TIMES` rules separated by `;`. **Rules are ORed.**    | `sat,sun@12:00-13:00,19:30-21:00;mon-fri@18:00-23:59` |
+| `WATCH_TIMES`     | Simple mode times: `HH:MM` (exact) or `HH:MM-HH:MM` (range), CSV.       | `11:30,18:00-22:00`                                   |
+| `WATCH_DAYS`      | Simple mode days: names/abbreviations, with ranges like `mon-fri`, CSV. | `sat,sun`                                             |
+| `WATCH_DATE_FROM` | Inclusive earliest date (`YYYY-MM-DD`), applied on top of the rules.    | `2026-07-17`                                          |
+| `WATCH_DATE_TO`   | Inclusive latest date (`YYYY-MM-DD`).                                   | `2026-08-13`                                          |
+
+A showtime is watched when it falls inside the date window **and** matches at
+least one rule. Inside a single rule, `DAYS` and `TIMES` are ANDed (and empty
+means "any"). `WATCH_TIMES`/`WATCH_DAYS` are the simple mode: together they form
+one rule, ORed with any `WATCH_RULES` groups.
+
+Example — "weekend shows at prime times, **or** any weekday evening after 6pm,
+across the whole run":
+
+```
+WATCH_RULES=sat,sun@12:00-13:00,16:00-17:00,19:30-21:00;mon-fri@18:00-23:59
+WATCH_DATE_FROM=2026-07-17
+WATCH_DATE_TO=2026-08-13
+```
+
+Each matching showtime alerts once, with its booking link. If a watched showtime
+sells out it is dropped from the tracked set and alerts again if it reopens.
+Pre-sale rows (BFI's `next-on-sale` marker) are treated as _not yet bookable_, so
+they never trigger an alert until general sale opens.
 
 ## Quick start
 
@@ -67,8 +110,8 @@ docker compose down               # stop
 ```
 
 The container restarts automatically (`restart: always`) and stores its state
-in a named volume (`bfi-state` mounted at `/data`), so a known `bookable` is
-not re-alerted after a restart or host reboot.
+in a named volume (`bfi-state` mounted at `/data`), so already-alerted showtimes
+are not re-alerted after a restart or host reboot.
 
 **Change the polling interval:** set `CHECK_INTERVAL` (seconds) in `.env` and
 `docker compose up -d` again. Lower it (e.g. `120`) as the expected on-sale date
@@ -83,12 +126,12 @@ The package is public — no `docker login` is required to pull.
 
 Available tags:
 
-| Tag                     | What it tracks                                |
-| ----------------------- | --------------------------------------------- |
-| `latest`                | Latest commit on `main`.                      |
-| `main`                  | Same as `latest`.                             |
-| `v1.2.3` / `1.2` / `1`  | A specific release tag (semver fan-out).      |
-| `sha-<short>`           | A specific commit (e.g. `sha-0310a6b`).       |
+| Tag                    | What it tracks                           |
+| ---------------------- | ---------------------------------------- |
+| `latest`               | Latest commit on `main`.                 |
+| `main`                 | Same as `latest`.                        |
+| `v1.2.3` / `1.2` / `1` | A specific release tag (semver fan-out). |
+| `sha-<short>`          | A specific commit (e.g. `sha-0310a6b`).  |
 
 **One-liner:**
 
@@ -173,9 +216,10 @@ npm run format       # prettier --write
 npm run typecheck    # tsc --noEmit
 ```
 
-Pure logic (`detector.ts`, `decide.ts`, `notifier.ts`, `state.ts`) is covered
-by vitest unit tests against fixtures in `tests/fixtures/`. The Playwright
-fetch path is exercised end-to-end via `npm run dev:check`.
+Pure logic (`detector.ts`, `showtimes.ts`, `decide.ts`, `notifier.ts`,
+`state.ts`) is covered by vitest unit tests against fixtures in
+`tests/fixtures/`. The Playwright fetch path is exercised end-to-end via
+`npm run dev:check`.
 
 ## Troubleshooting
 
@@ -191,8 +235,9 @@ fetch path is exercised end-to-end via `npm run dev:check`.
 
 See [`.env.example`](.env.example). Required: `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`. Optional: `TARGET_URL`, `CHECK_INTERVAL` (900), `HEADLESS`
-(true), `ERROR_ALERT_AFTER` (5), `STATE_FILE` (`/data/last_status.json`), and
-the detector keyword overrides.
+(true), `ERROR_ALERT_AFTER` (5), `STATE_FILE` (`/data/last_status.json`), the
+watch filter (`WATCH_RULES`, or simple `WATCH_TIMES`/`WATCH_DAYS`, plus
+`WATCH_DATE_FROM`/`WATCH_DATE_TO`), and the detector keyword overrides.
 
 ## Contributing
 

@@ -22,6 +22,7 @@ export const DEFAULT_DETECTOR_CONFIG: DetectorConfig = {
     "not yet on sale",
     "sale date to be confirmed",
     "go on sale",
+    "last-column next-on-sale",
   ],
   soldOutKeywords: [
     'class="unavailable-message">sold out',

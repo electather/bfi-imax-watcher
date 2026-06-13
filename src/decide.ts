@@ -1,4 +1,4 @@
-import type { Decision, Status } from "./types.js";
+import type { Decision, Showtime, Status } from "./types.js";
 
 /**
  * Decide what to do given the previously persisted status and the current one.
@@ -22,6 +22,34 @@ export function decideAction(prev: Status | null, current: Status): Decision {
     return "rearm";
   }
   return "noop";
+}
+
+export interface ShowtimeAlertDecision {
+  /** Watched showtimes that just became bookable and should be alerted now. */
+  readonly toAlert: Showtime[];
+  /** Keys to persist as the new "already alerted while bookable" set. */
+  readonly nextAlerted: Set<string>;
+}
+
+/**
+ * Decide which watched showtimes to alert on this cycle. Pure function.
+ *
+ * `bookableMatches` is the set of currently-bookable showtimes the user is
+ * watching. We alert for any whose key was not already in `prevAlerted` (so
+ * each distinct showtime alerts once), and carry forward exactly the current
+ * bookable keys. A showtime dropping out of `bookableMatches` (sold out again,
+ * or pulled from the listing) is thereby removed from the set and will re-alert
+ * if it later reopens — mirroring the page-level re-arm behaviour.
+ */
+export function decideShowtimeAlerts(
+  prevAlerted: ReadonlySet<string>,
+  bookableMatches: readonly Showtime[],
+): ShowtimeAlertDecision {
+  const toAlert = bookableMatches.filter(
+    (showtime) => !prevAlerted.has(showtime.key),
+  );
+  const nextAlerted = new Set(bookableMatches.map((showtime) => showtime.key));
+  return { toAlert, nextAlerted };
 }
 
 export interface ErrorCounterResult {

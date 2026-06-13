@@ -37,6 +37,15 @@ describe("detect", () => {
     expect(detect(html, DEFAULT_DETECTOR_CONFIG)).toBe("bookable");
   });
 
+  it("classifies a presale (next-on-sale) page without sold-out rows as coming_soon", () => {
+    const html =
+      '<div class="result-box-item">' +
+      '<div class="item-link last-column next-on-sale">' +
+      '<span class="on-sale-date">On sale Monday 15 June 2026 09:00</span>' +
+      "</div></div>";
+    expect(detect(html, DEFAULT_DETECTOR_CONFIG)).toBe("coming_soon");
+  });
+
   it("treats garbage HTML as unknown (TEST-003)", () => {
     expect(
       detect("<html><body>hello</body></html>", DEFAULT_DETECTOR_CONFIG),
